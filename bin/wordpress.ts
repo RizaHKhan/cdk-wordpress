@@ -15,7 +15,7 @@ const db = new DatabaseStack(app, "DatabaseStack", {
   vpc: networking.vpc,
 });
 
-const ec2 = new InstanceStack(app, "InstanceStack", {
+new InstanceStack(app, "InstanceStack", {
   keyPair: keypair.keyPair,
   vpc: networking.vpc,
   securityGroup: networking.securityGroup,
