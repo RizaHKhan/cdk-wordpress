@@ -1,4 +1,4 @@
-import { Fn, Stack, StackProps } from "aws-cdk-lib";
+import { Duration, Stack, StackProps } from "aws-cdk-lib";
 import { AutoScalingGroup } from "aws-cdk-lib/aws-autoscaling";
 import {
   Vpc,
@@ -11,6 +11,11 @@ import {
   KeyPair,
   UserData,
 } from "aws-cdk-lib/aws-ec2";
+import {
+  ApplicationLoadBalancer,
+  ApplicationTargetGroup,
+  TargetType,
+} from "aws-cdk-lib/aws-elasticloadbalancingv2";
 import { Role } from "aws-cdk-lib/aws-iam";
 import { DatabaseInstance } from "aws-cdk-lib/aws-rds";
 import { Construct } from "constructs";
@@ -24,7 +29,8 @@ interface InstanceStackProps extends StackProps {
 }
 
 export class InstanceStack extends Stack {
-  asg: AutoScalingGroup;
+  private asg: AutoScalingGroup;
+  private alb: ApplicationLoadBalancer;
 
   constructor(scope: Construct, id: string, props: InstanceStackProps) {
     super(scope, id, props);
@@ -72,6 +78,33 @@ export class InstanceStack extends Stack {
       launchTemplate,
       vpcSubnets: { subnetType: SubnetType.PUBLIC },
       desiredCapacity: 1,
+    });
+
+    this.alb = new ApplicationLoadBalancer(this, "WordpressALB", {
+      vpc: props.vpc,
+      internetFacing: true,
+      securityGroup: props.securityGroup,
+    });
+
+    const targetGroup = new ApplicationTargetGroup(
+      this,
+      "WordpressTargetGroup",
+      {
+        vpc: props.vpc,
+        targetType: TargetType.INSTANCE,
+        port: 80,
+        targets: [this.asg],
+        healthCheck: {
+          path: "/",
+          interval: Duration.minutes(1),
+        },
+      }
+    );
+
+    this.alb.addListener("WordpressListener", {
+      port: 80,
+      open: true,
+      defaultTargetGroups: [targetGroup],
     });
 
     props.db.connections.allowDefaultPortFrom(this.asg);
