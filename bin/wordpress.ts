@@ -18,22 +18,20 @@ const app = new App({
     env: { region: "us-east-1", account: CDK_DEFAULT_ACCOUNT },
   },
 });
+
+const keypair = new KeypairStack(app);
+const networking = new NetworkingStack(app);
 const distribution = new DistributionStack(app);
-const networking = new NetworkingStack(app, "NetworkingStack", {});
-
-const keypair = new KeypairStack(app, "KeyPairStack", {});
-
-const db = new DatabaseStack(app, "DatabaseStack", {
+const db = new DatabaseStack(app, {
   vpc: networking.vpc,
 });
 
-const instance = new InstanceStack(app, "InstanceStack", {
+new InstanceStack(app, {
   keyPair: keypair.keyPair,
   vpc: networking.vpc,
   securityGroup: networking.securityGroup,
   role: networking.role,
   db: db.rds,
-  domainName,
+  certificate: distribution.certificate,
+  hostedZone: distribution.hostedZone,
 });
-
-distribution.createCloudfrontDistributionAndARecord(instance.alb);

@@ -1,4 +1,4 @@
-import { SecretValue, Stack, StackProps } from "aws-cdk-lib";
+import { SecretValue, StackProps } from "aws-cdk-lib";
 import { SubnetType, Vpc } from "aws-cdk-lib/aws-ec2";
 import {
   DatabaseInstance,
@@ -6,16 +6,17 @@ import {
   MysqlEngineVersion,
 } from "aws-cdk-lib/aws-rds";
 import { Construct } from "constructs";
+import { StackExtender } from "../utils/StackExtender";
 
 interface DatabaseStackProps extends StackProps {
   vpc: Vpc;
 }
 
-export class DatabaseStack extends Stack {
+export class DatabaseStack extends StackExtender {
   rds: DatabaseInstance;
 
-  constructor(scope: Construct, id: string, props: DatabaseStackProps) {
-    super(scope, id, props);
+  constructor(scope: Construct, props: DatabaseStackProps) {
+    super(scope, "DatabaseStack", props);
 
     this.rds = new DatabaseInstance(this, "WordpressRDS", {
       engine: DatabaseInstanceEngine.mysql({

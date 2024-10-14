@@ -1,4 +1,4 @@
-import { Stack, StackProps } from "aws-cdk-lib";
+import { StackProps } from "aws-cdk-lib";
 import {
   Vpc,
   SubnetType,
@@ -12,14 +12,15 @@ import {
 } from "aws-cdk-lib/aws-ec2";
 import { ManagedPolicy, Role, ServicePrincipal } from "aws-cdk-lib/aws-iam";
 import { Construct } from "constructs";
+import { StackExtender } from "../utils/StackExtender";
 
-export class NetworkingStack extends Stack {
+export class NetworkingStack extends StackExtender {
   vpc: Vpc;
   role: Role;
   securityGroup: SecurityGroup;
 
-  constructor(scope: Construct, id: string, props?: StackProps) {
-    super(scope, id, props);
+  constructor(scope: Construct, props?: StackProps) {
+    super(scope, "NetworkingStack", props);
 
     this.vpc = new Vpc(this, "WordpressVpc", {
       vpcName: "WordpressVpc",
@@ -61,20 +62,20 @@ export class NetworkingStack extends Stack {
     this.securityGroup.addIngressRule(
       Peer.anyIpv4(),
       Port.tcp(443),
-      "Allow HTTPS"
+      "Allow HTTPS",
     );
 
     this.securityGroup.addIngressRule(
       Peer.anyIpv4(),
       Port.tcp(80),
-      "Allow HTTP"
+      "Allow HTTP",
     );
 
     // Restrict SSH access to EC2 Instance Connect service IP addresses for the region
     this.securityGroup.addIngressRule(
       Peer.ipv4("0.0.0.0/0"),
       Port.tcp(22),
-      "Allow SSH from EC2 Instance Connect IPs"
+      "Allow SSH from EC2 Instance Connect IPs",
     );
   }
 }

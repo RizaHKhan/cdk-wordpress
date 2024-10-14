@@ -5,23 +5,14 @@ import {
   Certificate,
   CertificateValidation,
 } from "aws-cdk-lib/aws-certificatemanager";
-import { ARecord, HostedZone, RecordTarget } from "aws-cdk-lib/aws-route53";
-import { LoadBalancerV2Origin } from "aws-cdk-lib/aws-cloudfront-origins";
-import { CloudFrontTarget } from "aws-cdk-lib/aws-route53-targets";
-import {
-  CachePolicy,
-  Distribution,
-  OriginProtocolPolicy,
-  ViewerProtocolPolicy,
-} from "aws-cdk-lib/aws-cloudfront";
-import { ApplicationLoadBalancer } from "aws-cdk-lib/aws-elasticloadbalancingv2";
+import { HostedZone } from "aws-cdk-lib/aws-route53";
 
 export class DistributionStack extends StackExtender {
   public hostedZone: HostedZone;
   public certificate: Certificate;
 
   constructor(scope: Construct, props?: StackProps) {
-    super(scope, "WordpressAcm", props);
+    super(scope, "WordpressDistribution", props);
 
     this.createHostedZone();
     this.createCertificate();
@@ -47,39 +38,5 @@ export class DistributionStack extends StackExtender {
         validation: CertificateValidation.fromDns(this.hostedZone),
       },
     );
-  }
-
-  public createCloudfrontDistributionAndARecord(
-    alb: ApplicationLoadBalancer,
-  ): void {
-    const distribution = new Distribution(
-      this,
-      this.setConstructName("Distribution"),
-      {
-        defaultBehavior: {
-          origin: new LoadBalancerV2Origin(alb, {
-            protocolPolicy: OriginProtocolPolicy.HTTP_ONLY,
-          }),
-          viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-          cachePolicy: CachePolicy.CACHING_OPTIMIZED,
-        },
-        domainNames: [`www.${this.domainName}`, this.domainName],
-        certificate: this.certificate,
-      },
-    );
-
-    // A Record for www
-    new ARecord(this, "ARecord", {
-      zone: this.hostedZone,
-      target: RecordTarget.fromAlias(new CloudFrontTarget(distribution)),
-      recordName: `www.${this.domainName}`,
-    });
-
-    // A Record for root domain
-    new ARecord(this, "RootARecord", {
-      zone: this.hostedZone,
-      target: RecordTarget.fromAlias(new CloudFrontTarget(distribution)),
-      recordName: this.domainName, // root domain
-    });
   }
 }
