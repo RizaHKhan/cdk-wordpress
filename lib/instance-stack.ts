@@ -1,5 +1,5 @@
-import { Duration, Stack, StackProps } from "aws-cdk-lib";
-import { AutoScalingGroup, Signals } from "aws-cdk-lib/aws-autoscaling";
+import { Fn, Stack, StackProps } from "aws-cdk-lib";
+import { AutoScalingGroup } from "aws-cdk-lib/aws-autoscaling";
 import {
   Vpc,
   AmazonLinuxImage,
@@ -9,8 +9,7 @@ import {
   SecurityGroup,
   AmazonLinuxGeneration,
   KeyPair,
-  CloudFormationInit,
-  InitCommand,
+  UserData,
 } from "aws-cdk-lib/aws-ec2";
 import { Role } from "aws-cdk-lib/aws-iam";
 import { DatabaseInstance } from "aws-cdk-lib/aws-rds";
@@ -30,6 +29,33 @@ export class InstanceStack extends Stack {
   constructor(scope: Construct, id: string, props: InstanceStackProps) {
     super(scope, id, props);
 
+    const userData = UserData.forLinux();
+
+    userData.addCommands(
+      "yum update -y",
+      "yum install -y httpd php php-mysqlnd",
+      "systemctl start httpd",
+      "systemctl enable httpd",
+      "cd /var/www/html",
+      "wget https://wordpress.org/latest.tar.gz",
+      "tar -xzf latest.tar.gz",
+      "cp -r wordpress/* /var/www/html/",
+      "rm -rf wordpress",
+      "rm -rf latest.tar.gz",
+      "chown -R apache:apache /var/www/html/",
+      "systemctl restart httpd",
+      "sudo cp /var/www/html/wp-config-sample.php /var/www/html/wp-config.php",
+      `sudo sed -i "s/'database_name_here'/'wordpress'/g" /var/www/html/wp-config.php`,
+      `sudo sed -i "s/'username_here'/'admin'/g" /var/www/html/wp-config.php`,
+      `sudo sed -i "s/'password_here'/'password#1'/g" /var/www/html/wp-config.php`,
+      `sudo sed -i "s/'localhost'/'${props.db.dbInstanceEndpointAddress}'/g" /var/www/html/wp-config.php`,
+      "sudo usermod -a -G apache ec2-user",
+      "sudo chown -R ec2-user:apache /var/www",
+      "sudo chmod 2775 /var/www",
+      "sudo find /var/www -type d -exec chmod 2775 {} \\;",
+      "sudo find /var/www -type f -exec chmod 0664 {} \\;"
+    );
+
     const launchTemplate = new LaunchTemplate(this, "WordpressLaunchTemplate", {
       instanceType: new InstanceType("t2.micro"),
       machineImage: new AmazonLinuxImage({
@@ -38,6 +64,7 @@ export class InstanceStack extends Stack {
       role: props.role,
       securityGroup: props.securityGroup,
       keyPair: props.keyPair,
+      userData,
     });
 
     this.asg = new AutoScalingGroup(this, "WordpressASG", {
@@ -45,50 +72,6 @@ export class InstanceStack extends Stack {
       launchTemplate,
       vpcSubnets: { subnetType: SubnetType.PUBLIC },
       desiredCapacity: 1,
-      init: CloudFormationInit.fromElements(
-        InitCommand.shellCommand("sudo yum update -y"),
-        InitCommand.shellCommand(
-          "sudo yum install php wget httpd stress mariadb105-server php-{pear,cgi,common,curl,mbstring,gd,mysqlnd,gettext,bcmath,json,xml,fpm,intl,zip} -y"
-        ),
-        InitCommand.shellCommand("sudo systemctl enable httpd"),
-        InitCommand.shellCommand("sudo systemctl start httpd"),
-        InitCommand.shellCommand(
-          "sudo wget http://wordpress.org/latest.tar.gz -P /var/www/html && cd /var/www/html && sudo tar -zxvf latest.tar.gz"
-        ),
-        InitCommand.shellCommand(
-          "sudo cp -rvf /var/www/html/wordpress/* /var/www/html/"
-        ),
-        InitCommand.shellCommand("sudo rm -R /var/www/html/wordpress -f"),
-        InitCommand.shellCommand("sudo rm /var/www/html/latest.tar.gz -f"),
-
-        InitCommand.shellCommand(
-          `sudo cp /var/www/html/wp-config-sample.php /var/www/html/wp-config.php`
-        ),
-
-        InitCommand.shellCommand(
-          `sudo sed -i "s/'database_name_here'/'wordpress'/g" /var/www/html/wp-config.php`
-        ),
-        InitCommand.shellCommand(
-          `sudo sed -i "s/'username_here'/'admin'/g" /var/www/html/wp-config.php`
-        ),
-        InitCommand.shellCommand(
-          `sudo sed -i "s/'password_here'/'password#1'/g" /var/www/html/wp-config.php`
-        ),
-        InitCommand.shellCommand(
-          `sudo sed -i "s/'localhost'/'${props.db.dbInstanceEndpointAddress}'/g" /var/www/html/wp-config.php`
-        ),
-
-        InitCommand.shellCommand("sudo usermod -a -G apache ec2-user"),
-        InitCommand.shellCommand("sudo chown -R ec2-user:apache /var/www"),
-        InitCommand.shellCommand("sudo chmod 2775 /var/www"),
-        InitCommand.shellCommand(
-          "sudo find /var/www -type d -exec chmod 2775 {} \\;"
-        ),
-        InitCommand.shellCommand(
-          "sudo find /var/www -type f -exec chmod 0664 {} \\;"
-        )
-      ),
-      signals: Signals.waitForCount(0),
     });
 
     props.db.connections.allowDefaultPortFrom(this.asg);

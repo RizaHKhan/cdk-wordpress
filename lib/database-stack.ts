@@ -13,6 +13,7 @@ interface DatabaseStackProps extends StackProps {
 
 export class DatabaseStack extends Stack {
   rds: DatabaseInstance;
+
   constructor(scope: Construct, id: string, props: DatabaseStackProps) {
     super(scope, id, props);
 
