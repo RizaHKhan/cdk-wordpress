@@ -30,7 +30,7 @@ interface InstanceStackProps extends StackProps {
 
 export class InstanceStack extends Stack {
   private asg: AutoScalingGroup;
-  private alb: ApplicationLoadBalancer;
+  public alb: ApplicationLoadBalancer;
 
   constructor(scope: Construct, id: string, props: InstanceStackProps) {
     super(scope, id, props);
