@@ -9,10 +9,11 @@ import { env } from "process";
 import { DistributionStack } from "../lib/distribution-stack";
 
 const { CDK_DEFAULT_ACCOUNT } = env;
+const domainName = "modernartisans.xyz";
 
 const app = new App({
   context: {
-    domainName: "modernartisans.xyz",
+    domainName,
     appName: "Authenticator",
     env: { region: "us-east-1", account: CDK_DEFAULT_ACCOUNT },
   },
@@ -32,6 +33,7 @@ const instance = new InstanceStack(app, "InstanceStack", {
   securityGroup: networking.securityGroup,
   role: networking.role,
   db: db.rds,
+  domainName,
 });
 
 distribution.createCloudfrontDistributionAndARecord(instance.alb);

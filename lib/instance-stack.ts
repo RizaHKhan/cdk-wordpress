@@ -26,6 +26,7 @@ interface InstanceStackProps extends StackProps {
   role: Role;
   vpc: Vpc;
   db: DatabaseInstance;
+  domainName: string;
 }
 
 export class InstanceStack extends Stack {
@@ -49,17 +50,19 @@ export class InstanceStack extends Stack {
       "rm -rf wordpress",
       "rm -rf latest.tar.gz",
       "chown -R apache:apache /var/www/html/",
-      "systemctl restart httpd",
       "sudo cp /var/www/html/wp-config-sample.php /var/www/html/wp-config.php",
       `sudo sed -i "s/'database_name_here'/'wordpress'/g" /var/www/html/wp-config.php`,
       `sudo sed -i "s/'username_here'/'admin'/g" /var/www/html/wp-config.php`,
       `sudo sed -i "s/'password_here'/'password#1'/g" /var/www/html/wp-config.php`,
       `sudo sed -i "s/'localhost'/'${props.db.dbInstanceEndpointAddress}'/g" /var/www/html/wp-config.php`,
+      `sudo sed -i "/define( 'DB_COLLATE', '' );/a define('WP_HOME', 'https://${props.domainName}/wp');" /var/www/html/wp-config.php`,
+      `sudo sed -i "/define( 'DB_COLLATE', '' );/a define('WP_SITEURL', 'https://${props.domainName}');" /var/www/html/wp-config.php`,
+      "systemctl restart httpd",
       "sudo usermod -a -G apache ec2-user",
       "sudo chown -R ec2-user:apache /var/www",
       "sudo chmod 2775 /var/www",
       "sudo find /var/www -type d -exec chmod 2775 {} \\;",
-      "sudo find /var/www -type f -exec chmod 0664 {} \\;"
+      "sudo find /var/www -type f -exec chmod 0664 {} \\;",
     );
 
     const launchTemplate = new LaunchTemplate(this, "WordpressLaunchTemplate", {
@@ -98,7 +101,7 @@ export class InstanceStack extends Stack {
           path: "/",
           interval: Duration.minutes(1),
         },
-      }
+      },
     );
 
     this.alb.addListener("WordpressListener", {
