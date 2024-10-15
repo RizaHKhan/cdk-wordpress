@@ -118,7 +118,7 @@ export class InstanceStack extends StackExtender {
       },
     );
 
-    this.alb.addListener("WordpressListener", {
+    alb.addListener("WordpressListener", {
       port: 80,
       open: true,
       defaultTargetGroups: [targetGroup],
