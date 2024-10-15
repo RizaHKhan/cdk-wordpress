@@ -44,11 +44,11 @@ interface InstanceStackProps extends StackProps {
 }
 
 export class InstanceStack extends StackExtender {
-  private asg: AutoScalingGroup;
-  public alb: ApplicationLoadBalancer;
-
   constructor(scope: Construct, props: InstanceStackProps) {
     super(scope, "InstanceStack", props);
+
+    const { certificate, hostedZone, db, role, vpc, securityGroup, keyPair } =
+      props;
 
     const userData = UserData.forLinux();
 
@@ -68,7 +68,7 @@ export class InstanceStack extends StackExtender {
       `sudo sed -i "s/'database_name_here'/'wordpress'/g" /var/www/html/wp-config.php`,
       `sudo sed -i "s/'username_here'/'admin'/g" /var/www/html/wp-config.php`,
       `sudo sed -i "s/'password_here'/'password#1'/g" /var/www/html/wp-config.php`,
-      `sudo sed -i "s/'localhost'/'${props.db.dbInstanceEndpointAddress}'/g" /var/www/html/wp-config.php`,
+      `sudo sed -i "s/'localhost'/'${db.dbInstanceEndpointAddress}'/g" /var/www/html/wp-config.php`,
       `sudo sed -i "/define( 'DB_COLLATE', '' );/a define('WP_SITEURL', 'https://${this.domainName}');" /var/www/html/wp-config.php`,
       `sudo sed -i "/define( 'DB_COLLATE', '' );/a define('WP_HOME', 'https://${this.domainName}');" /var/www/html/wp-config.php`,
       "systemctl restart httpd",
@@ -84,33 +84,37 @@ export class InstanceStack extends StackExtender {
       machineImage: new AmazonLinuxImage({
         generation: AmazonLinuxGeneration.AMAZON_LINUX_2023,
       }),
-      role: props.role,
-      securityGroup: props.securityGroup,
-      keyPair: props.keyPair,
+      role,
+      securityGroup,
+      keyPair,
       userData,
     });
 
-    this.asg = new AutoScalingGroup(this, "WordpressASG", {
-      vpc: props.vpc,
+    const asg = new AutoScalingGroup(this, "WordpressASG", {
+      vpc: vpc,
       launchTemplate,
       vpcSubnets: { subnetType: SubnetType.PUBLIC },
       desiredCapacity: 1,
     });
 
-    const alb = new ApplicationLoadBalancer(this, "WordpressALB", {
-      vpc: props.vpc,
-      internetFacing: true,
-      securityGroup: props.securityGroup,
-    });
+    const applicationLoadBalancer = new ApplicationLoadBalancer(
+      this,
+      "WordpressALB",
+      {
+        vpc,
+        internetFacing: true,
+        securityGroup,
+      },
+    );
 
     const targetGroup = new ApplicationTargetGroup(
       this,
       "WordpressTargetGroup",
       {
-        vpc: props.vpc,
+        vpc,
         targetType: TargetType.INSTANCE,
         port: 80,
-        targets: [this.asg],
+        targets: [asg],
         healthCheck: {
           path: "/",
           interval: Duration.minutes(1),
@@ -118,26 +122,20 @@ export class InstanceStack extends StackExtender {
       },
     );
 
-    alb.addListener("WordpressListener", {
+    applicationLoadBalancer.addListener("WordpressListener", {
       port: 80,
       open: true,
       defaultTargetGroups: [targetGroup],
     });
 
-    props.db.connections.allowDefaultPortFrom(this.asg);
-    this.createCloudfrontDistributionAndARecord(alb, props);
-  }
+    db.connections.allowDefaultPortFrom(asg);
 
-  public createCloudfrontDistributionAndARecord(
-    alb: ApplicationLoadBalancer,
-    props: InstanceStackProps,
-  ): void {
     const distribution = new Distribution(
       this,
       this.setConstructName("Distribution"),
       {
         defaultBehavior: {
-          origin: new LoadBalancerV2Origin(alb, {
+          origin: new LoadBalancerV2Origin(applicationLoadBalancer, {
             protocolPolicy: OriginProtocolPolicy.HTTP_ONLY,
           }),
           allowedMethods: AllowedMethods.ALLOW_ALL,
@@ -146,20 +144,20 @@ export class InstanceStack extends StackExtender {
           originRequestPolicy: OriginRequestPolicy.ALL_VIEWER,
         },
         domainNames: [`www.${this.domainName}`, this.domainName],
-        certificate: props.certificate,
+        certificate: certificate,
       },
     );
 
     // A Record for www
     new ARecord(this, "ARecord", {
-      zone: props.hostedZone,
+      zone: hostedZone,
       target: RecordTarget.fromAlias(new CloudFrontTarget(distribution)),
       recordName: `www.${this.domainName}`,
     });
 
     // A Record for root domain
     new ARecord(this, "RootARecord", {
-      zone: props.hostedZone,
+      zone: hostedZone,
       target: RecordTarget.fromAlias(new CloudFrontTarget(distribution)),
       recordName: this.domainName, // root domain
     });
