@@ -20,18 +20,9 @@ import { Role } from "aws-cdk-lib/aws-iam";
 import { DatabaseInstance } from "aws-cdk-lib/aws-rds";
 import { Construct } from "constructs";
 import { StackExtender } from "../utils/StackExtender";
-import {
-  AllowedMethods,
-  CachePolicy,
-  Distribution,
-  OriginProtocolPolicy,
-  OriginRequestPolicy,
-  ViewerProtocolPolicy,
-} from "aws-cdk-lib/aws-cloudfront";
-import { LoadBalancerV2Origin } from "aws-cdk-lib/aws-cloudfront-origins";
 import { Certificate } from "aws-cdk-lib/aws-certificatemanager";
 import { ARecord, HostedZone, RecordTarget } from "aws-cdk-lib/aws-route53";
-import { CloudFrontTarget } from "aws-cdk-lib/aws-route53-targets";
+import { LoadBalancerTarget } from "aws-cdk-lib/aws-route53-targets";
 
 interface InstanceStackProps extends StackProps {
   keyPair: KeyPair;
@@ -69,8 +60,8 @@ export class InstanceStack extends StackExtender {
       `sudo sed -i "s/'username_here'/'admin'/g" /var/www/html/wp-config.php`,
       `sudo sed -i "s/'password_here'/'password#1'/g" /var/www/html/wp-config.php`,
       `sudo sed -i "s/'localhost'/'${db.dbInstanceEndpointAddress}'/g" /var/www/html/wp-config.php`,
-      `sudo sed -i "/define( 'DB_COLLATE', '' );/a define('WP_SITEURL', 'https://www.${this.domainName}');" /var/www/html/wp-config.php`,
-      `sudo sed -i "/define( 'DB_COLLATE', '' );/a define('WP_HOME', 'https://www.${this.domainName}');" /var/www/html/wp-config.php`,
+      `sudo sed -i "/define( 'DB_COLLATE', '' );/a define('WP_SITEURL', 'https://${this.domainName}');" /var/www/html/wp-config.php`,
+      `sudo sed -i "/define( 'DB_COLLATE', '' );/a define('WP_HOME', 'https://${this.domainName}');" /var/www/html/wp-config.php`,
       "systemctl restart httpd",
       "sudo usermod -a -G apache ec2-user",
       "sudo chown -R ec2-user:apache /var/www",
@@ -128,37 +119,31 @@ export class InstanceStack extends StackExtender {
       defaultTargetGroups: [targetGroup],
     });
 
+    const httpsListener = applicationLoadBalancer.addListener("HTTPSListener", {
+      port: 443,
+      certificates: [certificate], // Your SSL certificate from ACM
+      open: true,
+    });
+
+    httpsListener.addTargetGroups("TargetGroup", {
+      targetGroups: [targetGroup],
+    });
+
     db.connections.allowDefaultPortFrom(asg);
 
-    const distribution = new Distribution(
-      this,
-      this.setConstructName("Distribution"),
-      {
-        defaultBehavior: {
-          origin: new LoadBalancerV2Origin(applicationLoadBalancer, {
-            protocolPolicy: OriginProtocolPolicy.HTTP_ONLY,
-          }),
-          allowedMethods: AllowedMethods.ALLOW_ALL,
-          viewerProtocolPolicy: ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-          cachePolicy: CachePolicy.CACHING_DISABLED,
-          originRequestPolicy: OriginRequestPolicy.ALL_VIEWER,
-        },
-        domainNames: [`www.${this.domainName}`, this.domainName],
-        certificate: certificate,
-      },
-    );
-
-    // A Record for www
     new ARecord(this, "ARecord", {
       zone: hostedZone,
-      target: RecordTarget.fromAlias(new CloudFrontTarget(distribution)),
+      target: RecordTarget.fromAlias(
+        new LoadBalancerTarget(applicationLoadBalancer),
+      ),
       recordName: `www.${this.domainName}`,
     });
 
-    // A Record for root domain
     new ARecord(this, "RootARecord", {
       zone: hostedZone,
-      target: RecordTarget.fromAlias(new CloudFrontTarget(distribution)),
+      target: RecordTarget.fromAlias(
+        new LoadBalancerTarget(applicationLoadBalancer),
+      ),
       recordName: this.domainName, // root domain
     });
   }
